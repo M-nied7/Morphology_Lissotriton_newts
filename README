@@ -6,6 +6,6 @@ Insitute of Environmental Sciences, Jagiellonian University
 
 elongationloop.apm - for elongation measurement of each photo
 feretmax.apm - the longest - measurement of maximum Feret diameter of the object used for tail tip measurement
-shape_measurements_loop.apm - measurement of elongation of the newt shape
+shape_measurements_loop.apm - measurement of elongation of the newt shape - estimation of body length
 spots_loop.apm - recognition and measurements of the spots (estimation of the shape of the objects via circularity and elongation)
 tail_tips.apm - visualization of tail tip only
