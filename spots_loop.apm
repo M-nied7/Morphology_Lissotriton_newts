@@ -1,0 +1,239 @@
+'-----------------------------------------------------------------
+'*                     Loop Over Images                          *
+'-----------------------------------------------------------------
+'* Originator: DE                                                *
+'* Date of creation: 08/08/2014                                  *
+'* Date of last modifications: 08/12/2014                        *
+'* Version: 1.0                                                  *
+'* Compatibility: APHELION v4.2.0 or later                       *
+'* Description: Load and display images from a selected folder   *
+'-----------------------------------------------------------------
+
+Option Explicit
+
+'----------------------------------------------------------------
+'*                    Dialog Declaration                        *
+'----------------------------------------------------------------
+
+Begin Dialog YesNoDialogTemplate ,,98,36,"Aphelion Dialog Box"
+	Text 4,4,92,8,"Do you really want to abort?",.Text1
+	PushButton 12,16,32,15,"Yes",.PushButton1
+	PushButton 48,16,32,15,"No",.PushButton2
+End Dialog
+
+'----------------------------------------------------------------
+'*                     	Display Image                           *
+'----------------------------------------------------------------
+'Function used to display each image
+Function DisplayImage(ByVal imgPath as String) As Integer
+	Dim imageName as String
+	Dim imageToDisplay as Variant
+	
+	imageName = FileParse$(imgPath, 4)
+	
+	'Read the image
+	imageToDisplay = AphImgNew(imageName)
+	AphImgRead imageToDisplay, imgPath
+	
+	'Allow the user to abort the loop execution process
+	DisplayImage = -1
+	On Error Goto Confirm
+	Msg.Open "Displayed image: '" & imgPath & "'." & ebCrLf & ebCrLf & "Press Cancel to abort the loop.", 0, True, False
+	Sleep 1000
+	On Error Goto 0
+	Msg.Close
+	Goto FunctionEnd
+	
+Confirm:
+	Dim yesNoDialog as YesNoDialogTemplate
+	Dim res as Integer
+	
+	On Error Goto 0
+	Msg.Close
+	res% = Dialog(yesNoDialog)
+	If (res = 1) Then
+		DisplayImage = 0
+	End If
+	
+FunctionEnd:
+	'Free the displayed image
+	AphImgFree imageToDisplay
+End Function
+
+'----------------------------------------------------------------
+'*                     	Process Image                           *
+'----------------------------------------------------------------
+'Function usable to process each image (instead of DisplayImage). It performs a threshold as an example
+Function ProcessImage(ByVal imgPath as String) as Integer
+	Dim imageName as String
+	Dim imageToProcess as Variant
+	Dim imageThreshold as Variant
+	Dim objectSet as Variant
+	
+	imageName = FileParse$(imgPath, 4)
+	
+	'Hide intermediate image display to speed up the process
+	AphDeferRefresh true
+	
+	'Read the image	and perform a threshold
+	imageToProcess = AphImgNew(imageName)
+	AphImgRead imageToProcess, imgPath
+	Aph4ImgIntensity imageToProcess, AphImgNew("Image 1")
+	AphImgThreshold AphImg("Image 1"), AphImgNew("Image 2"), Aph4Interval(0,175)
+	'Aph4ImgAreaOpen AphImg("Image 2"), AphImgNew("Image 3"), 30, pngSquare4
+	'Aph4ImgDilate AphImg("Image 3"), AphImgNew("Image 4"), pseSquare, 2
+	'Aph4ImgSplitConvex AphImg("Image 4"), AphImgNew("Image 5"), 1, pngSquare8
+	'Aph4ImgAreaOpen AphImg("Image 5"), AphImgNew("Image 6"), 2000, pngSquare4
+	'AphImgSubtract AphImg("Image 5"), AphImg("Image 6"), AphImgNew("Image 7")
+		
+	objectSet = AphObjNew(imageName)
+	Aph4ObjThreshold AphImg("Image 2"), objectSet, Aph4Interval(1,1), pngSquare4
+	Dim v1(2) As Long
+	v1(0) = fsmFeretDiameters
+	v1(1) = fsmFeretElongation1
+	v1(2) = fsmFeretElongation2
+	Aph4ObjFeretShapeMeasurementsEx Aph4ObjAttribute(objectSet, "BITMAP"), Aph4FeretMeasurements(v1), 12
+	Dim v2(1) As Long
+	v2(0) = ssmPixelCount
+	v2(1) = ssmCircularity
+	Aph4ObjStandardShapeMeasurementsEx Aph4ObjAttribute(objectSet, "BITMAP"), Aph4StandardMeasurements(v2)
+	AphObjExport objectSet, "Obj_'"& imageName &"'_kropki.txt", True, "	"
+	'AphObjExport objectSet,"C:\Users\Marta Niedzicka\Desktop\Zdjêcia F1 2015\Zdjêcia z terenu\Lissotriton_montandoni_batch_1\boczki\'"& imageName &"'.txt", True, "	"
+	
+	'Restore image display
+	AphImgFree imageToProcess
+	AphDeferRefresh False
+	
+	'Allow the user to abort the loop execution process
+	ProcessImage = -1
+	On Error Goto Confirm
+	Msg.Open "Processed image: '" & imgPath & "'." & ebCrLf & ebCrLf & "Press Cancel to abort the loop.", 0, True, False
+	Sleep 1000
+	On Error Goto 0
+	Msg.Close
+	Goto FunctionEnd
+	
+Confirm:
+	Dim yesNoDialog as YesNoDialogTemplate
+	Dim res as Integer
+	
+	On Error Goto 0
+	Msg.Close
+	res% = Dialog(yesNoDialog)
+	If (res = 1) Then
+		ProcessImage = 0
+	End If
+
+FunctionEnd:
+	'Free the threshold image
+	'AphImgFree AphImg("Image 7")
+	'AphImgFree AphImg("Image 6")
+	'AphImgFree AphImg("Image 5")
+	'AphImgFree AphImg("Image 4")
+	'AphImgFree AphImg("Image 3")
+	AphImgFree AphImg("Image 2")
+	AphImgFree AphImg("Image 1")
+End Function
+
+'----------------------------------------------------------------
+'*                 	Image File Extension Check                  *
+'----------------------------------------------------------------
+'Function to test if a file is an image to be processed based on its extension
+Function FilterPredicate(ByVal fileName as String) as Boolean
+	Dim extension as String
+	
+	extension = FileParse$(fileName, 5)
+	If (extension = "tif" Or extension = "jpg" Or extension = "bmp" Or extension = "png" Or extension = "asi") Then
+		FilterPredicate = True
+	Else
+		FilterPredicate = False
+	End If
+End Function
+
+'----------------------------------------------------------------
+'*                     	Loop On Files                           *
+'----------------------------------------------------------------
+'Recursive function to iterate on images in folders and subfolders
+Function LoopOnFolderImages(ByVal folderToBrowse as String, ByVal recursive as Boolean) as Integer
+	Dim imFile, subDirPath, currentDir As String
+	Dim subDirs$()
+	Dim subDir as Variant
+	Dim res as Integer
+	Dim abort as Integer
+	
+	LoopOnFolderImages = -1
+	currentDir = CurDir$
+	ChDir folderToBrowse
+	'*** Dir function allows to iterate on files in the current directory ***
+	imFile = Dir$("*")
+	abort = -1
+	While (imFile <> "" And abort <> 0)	 
+		If (FilterPredicate(imFile) = True) Then
+			abort = ProcessImage(imFile)
+'			abort = DisplayImage(imFile)
+			AphInfoWrite "'" & folderToBrowse & "\" & imFile & "' used..."'
+		End If
+		imFile = Dir$
+	Wend
+	If (recursive = True And abort <> 0) Then
+		'*** FileList function allows to obtain a list of subdirectories in the current directory ***
+		FileList subDirs$,"*", ebDirectory, ebSystem
+		
+		For Each subDir In subDirs
+			If (abort = 0) Then
+				Exit For
+			End If
+			If (subDir <> "." And subDir <> "..") Then
+				subDirPath = folderToBrowse & "\" & subDir
+				abort = LoopOnFolderImages(ByVal subDirPath, ByVal recursive)
+			End If
+		Next i
+	End If
+	ChDir currentDir
+	If Abort = 0 Then
+		LoopOnFolderImages = 0
+	End If
+End Function
+
+'----------------------------------------------------------------
+'*                     	Main Function                           *
+'----------------------------------------------------------------
+'Main function to select the folder to browse and call for the loop
+Sub Main()
+	Dim iniFolder As String, iniDrive As String
+	Dim imName As String
+	Dim inIm As Variant
+	Dim res As Integer
+	
+	MsgBox "This macro demonstrates how to display and/or process all images placed in a folder and its subfolders." & ebCrLf & ebCrLf & "Note: The list of loaded images is displayed in the Output Window."
+	
+	'Get the current folder
+	inifolder = CurDir$
+	inidrive = Fileparse$(inifolder,1)
+	
+	'*** Select the folder to read images ***
+	Dim inFolder As Variant
+	Dim inFolderDlg, shell
+	
+	On Error Resume Next
+	inFolder = ""
+	Set shell = CreateObject("Shell.Application")
+	Set inFolderDlg = shell.BrowseForFolder(0, "Select the folder with images", 0)
+	If IsObject(inFolderDlg) Then 
+		inFolder = inFolderDlg.Self.Path
+	End	If
+	Set inFolderDlg = Nothing
+	Set shell = Nothing
+	On Error Goto 0
+	If (inFolder = "") Then
+		Exit Sub
+	End If
+	
+	ChDrive FileParse$(inFolder, 1)
+	'Loop over all the image files of the user selected folder and subfolders (recursive at true)
+	res = LoopOnFolderImages(ByVal inFolder, ByVal True)
+	'Reset the original current drive and folder
+	ChDrive inidrive
+	ChDir inifolder
+	MsgBox "Reached the end of the loop"
+End Sub
